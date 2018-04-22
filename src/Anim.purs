@@ -58,21 +58,22 @@ animate delta (Animated _ anim) = anim delta
 
 
 moveTo :: forall a . HasPos a => Speed -> Pos -> Anim a -> Anim a
-moveTo speed toPos anim
+moveTo maxSpeed toPos anim
     | Vect.isNear (getPos $ current anim) toPos = Static obj
     where
       obj = current anim
     | otherwise = 
-        Animated obj (moveTo obj (Vect.direction (getPos obj) toPos))
+        Animated obj (moveTo obj 0.0 (Vect.direction (getPos obj) toPos))
     where
       obj = current anim
-      moveTo curObj lastDir (Milliseconds delta) =
-          let 
+      moveTo curObj lastSpeed lastDir (Milliseconds delta) =
+          let
+            speed = max maxSpeed (lastSpeed + maxSpeed / 20.0)
             nextPos = getPos curObj +. delta * speed *. lastDir
             newDir = Vect.direction nextPos toPos
             nextObj = setPos nextPos curObj
           in 
             if isNear newDir lastDir then
-              Animated nextObj (moveTo nextObj lastDir)                
+              Animated nextObj (moveTo nextObj speed lastDir)                
             else
               Static (setPos toPos curObj)

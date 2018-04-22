@@ -1,5 +1,5 @@
 {
-  "name": "Ps2048",
+  "name": "purescript-2048",
   "ignore": [
     "**/.*",
     "node_modules",

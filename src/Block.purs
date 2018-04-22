@@ -2,41 +2,45 @@ module Block where
 
 import Prelude
 
-import Data.Maybe (Maybe(..))
+import Anim (class HasPos, Anim, Pos, initStatic)
+import Control.Monad.Eff (Eff)
+import Graphics.Canvas (CANVAS, Context2D, beginPath, closePath, fillRect, setFillStyle)
+import Vect (Vect(..))
 
 type Color = String
 
-type Pos = { x :: Number, y :: Number }
-
-type HasPos r = { x :: Number, y :: Number | r }
-
-data Point = Point
-    { x :: Number
-    , y :: Number
-    , vx :: Number
-    , vy :: Number 
-    , ax :: Number
-    , ay :: Number
-    }
-
-data Block = Block
+newtype Block = Block
     { color :: Color
-    , x :: Number
-    , y :: Number
     , width :: Number
     , height :: Number
     , value :: Int
-    , animPos :: Maybe Point
+    , pos :: Pos
     }
 
-class IsAnimated o where
-    animate :: (Point -> Point) -> o -> Maybe o
 
-instance pointIsAnimated :: IsAnimated Point where
-    animate anim pt = Just (anim pt)
+create :: Color -> Number -> Number -> Int -> Pos -> Anim Block
+create col wdt hgt val p =
+    initStatic $ Block
+        { color: col
+        , width: wdt
+        , height: hgt
+        , value: val
+        , pos: p
+        }
 
-instance blockIsAnimated :: IsAnimated Block where
-    animate anim (Block bl) =
-        case bl.animPos of
-            Nothing -> Nothing
-            Just pt -> Just $ Block $ bl { animPos = animate anim pt }
+
+instance hasPosBlock :: HasPos Block where
+    getPos (Block b) = b.pos
+    setPos p (Block b) = Block (b { pos = p } )
+
+
+draw :: forall eff . Context2D -> Block -> Eff ( canvas :: CANVAS | eff ) Unit
+draw ctx (Block b) = do
+    void $ beginPath ctx
+    void $ setFillStyle b.color ctx
+    void $ fillRect ctx rect
+    void $ closePath ctx
+    where
+        rect =
+            let (Vect x y) = b.pos
+            in { x: x, y: y, w: b.width, h: b.height }

@@ -6,11 +6,11 @@ import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Random (RANDOM)
 import Control.Monad.Eff.Timer (TIMER)
 import DOM (DOM)
-import Data.Int (toNumber)
 import Data.Maybe (Maybe(Just))
 import Data.NonEmpty (NonEmpty(..), foldl1)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Tuple (Tuple(..), fst)
+import Game as Game
 import Graphics.Canvas (CANVAS, CanvasElement, Context2D, ScaleTransform, getCanvasElementById, getCanvasHeight, getCanvasWidth, getContext2D, scale)
 import JQuery (setScore, showGameOver)
 import Math (abs)
@@ -31,13 +31,6 @@ main = void $ unsafePartial do
 
     runGameLoop ctx 
 
-data Event 
-  = MoveLeft
-  | MoveRight
-  | MoveUp
-  | MoveDown
-  | Ticked Milliseconds
-
 -- | we are using `Signal` to map `animationFrame` and keyboard signals into
 -- | a `GameState`-signal using `Game.update`
 -- | finally we run this signal using `view`
@@ -47,29 +40,30 @@ runGameLoop ctx = do
   runSignal $ view <$> gameSignal
 
   where
-    view _ = do
+    view game = do
+      Game.view ctx game
       showGameOver false
       setScore $ show 0
 
     mkGameSignal = do
       sigs <- signals
-      foldEff (\_ s -> pure s) unit sigs
+      foldEff Game.update Game.init sigs
 
     signals = do
-      leftSignal  <- (\s -> s ~> onDown MoveLeft)  <$> keyPressed 37 
-      upSignal    <- (\s -> s ~> onDown MoveUp)    <$> keyPressed 38
-      rightSignal <- (\s -> s ~> onDown MoveRight) <$> keyPressed 39
-      downSignal  <- (\s -> s ~> onDown MoveDown)  <$> keyPressed 40
+      leftSignal  <- (\s -> s ~> onDown Game.MoveLeft)  <$> keyPressed 37 
+      upSignal    <- (\s -> s ~> onDown Game.MoveUp)    <$> keyPressed 38
+      rightSignal <- (\s -> s ~> onDown Game.MoveRight) <$> keyPressed 39
+      downSignal  <- (\s -> s ~> onDown Game.MoveDown)  <$> keyPressed 40
       tickSignal  <- mkTickSignal
       pure $ foldl1 merge (NonEmpty tickSignal [leftSignal, upSignal, rightSignal, downSignal])
 
     mkTickSignal = do
       animFrameSignal <- animationFrame
       pure $ foldp (\ n (Tuple _ l) -> Tuple (abs $ n-l) n) (Tuple 0.0 0.0) animFrameSignal 
-        ~> Ticked <<< Milliseconds <<< fst
+        ~> Game.Ticked <<< Milliseconds <<< fst
 
     onDown msg true  = msg
-    onDown _   false = Ticked $ Milliseconds 0.0
+    onDown _   false = Game.Ticked $ Milliseconds 0.0
 
 
 

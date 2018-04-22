@@ -16,6 +16,7 @@ import Data.Time.Duration (Milliseconds)
 import Graphics.Canvas (CANVAS, Context2D, clearRect)
 import Vect (Vect(..))
 
+
 type Game =
   { block :: Anim Block
   }

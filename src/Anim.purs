@@ -1,12 +1,12 @@
 module Anim 
   ( Anim, Pos, Dir, Speed
   , class HasPos, getPos, setPos
+  , class Animable, animate
   , getX, getY
   , current
   , isMoving
   , initStatic
   , moveTo
-  , animate
   ) where
 
 import Prelude
@@ -18,6 +18,15 @@ import Vect as Vect
 type Pos = Vect
 type Dir = Vect
 type Speed = Number
+
+
+class Animable a where
+  animate :: Milliseconds -> a -> a
+
+
+instance posAnimable :: HasPos a => Animable (Anim a) where
+  animate _ a@(Static _) = a
+  animate delta (Animated _ anim) = anim delta
 
 
 class HasPos a where
@@ -50,11 +59,6 @@ isMoving (Animated _ _) = true
 
 initStatic :: forall a . a -> Anim a
 initStatic = Static
-
-
-animate :: forall a . HasPos a => Milliseconds -> Anim a -> Anim a
-animate _ a@(Static _) = a
-animate delta (Animated _ anim) = anim delta
 
 
 moveTo :: forall a . HasPos a => Speed -> Pos -> Anim a -> Anim a

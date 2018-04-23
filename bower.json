@@ -13,7 +13,8 @@
     "purescript-random": "^3.0.0",
     "purescript-signal": "^9.0.0",
     "purescript-maps": "^3.6.0",
-    "purescript-dom": "^4.15.0"
+    "purescript-dom": "^4.15.0",
+    "purescript-test-unit": "^13.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^3.0.0"

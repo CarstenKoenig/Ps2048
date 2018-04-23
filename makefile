@@ -1,7 +1,7 @@
 SRC_PURS=$(wildcard src/*.purs)
 SRC_JS=$(wildcard src/*.js)
 
-dist/bundle.js: $(SRC_PURS) $(SRC_JS)
+dist/game.js: $(SRC_PURS) $(SRC_JS)
 	bower install
 	pulp build --to dist/game.js
 

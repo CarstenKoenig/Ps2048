@@ -14,7 +14,7 @@ import Anim (Anim, Speed, animate, current, getX, getY, isMoving, moveTo)
 import Block (Block)
 import Block as Block
 import Control.Monad.Eff (Eff)
-import Data.Array (foldr, length, replicate, (:))
+import Data.Array (foldr, length, replicate, uncons, zipWith, (:))
 import Data.Maybe (Maybe(..))
 import Data.Monoid (mempty)
 import Data.String (joinWith)
@@ -78,6 +78,18 @@ view ctx game = do
 data Board a =
   Board (Array (Row a))
 
+derive instance functorBoard :: Functor Board
+
+
+transpose :: forall a . Board a -> Board a
+transpose (Board rs) = 
+  Board $ case uncons rs of 
+    Nothing                   -> replicate 4 (Row [])
+    Just { head: r, tail: rs} -> zipRowsWith (:) r (transpose (Board rs))
+  where
+    zipRowsWith op (Row cs) (Board rs) = 
+      zipWith (\c (Row cs) -> Row (c `op` cs)) cs rs
+
 
 data Row a 
   = Row (Array (Cell a))
@@ -86,14 +98,16 @@ derive instance eqRow :: Eq a => Eq (Row a)
 instance showRow :: Show a => Show (Row a) where
   show (Row rs) = "<" <> joinWith ", " (map show rs) <> ">"
 
+derive instance functorRow :: Functor Row   
+
 
 data Cell a
   = Empty
   | Single a
   | Double a a
 
-
 derive instance eqCell :: Eq a => Eq (Cell a)
+derive instance functorCell :: Functor Cell
 instance showCell :: Show a => Show (Cell a) where
   show Empty = "[]"
   show (Single a) = "[" <> show a <> "]"
@@ -120,4 +134,9 @@ stackRow eqVal (Row cs) =
     cellVal (Double a _) = Just a
 
 
-  
+mergeRow :: forall a . (a -> a -> a) -> Row a -> Row a
+mergeRow merge (Row cs) = Row $ map mergeCell cs
+  where
+    mergeCell Empty = Empty
+    mergeCell (Single a) = Single a
+    mergeCell (Double a1 a2) = Single (merge a1 a2)

@@ -15,7 +15,8 @@ import Block (Block)
 import Block as Block
 import Control.Apply (lift2)
 import Control.Monad.Eff (Eff)
-import Data.Array (any, foldr, length, mapWithIndex, replicate, uncons, zipWith, (:))
+import Control.Monad.Eff.Random (RANDOM, randomInt, randomRange)
+import Data.Array (any, concat, filter, foldr, index, length, mapWithIndex, replicate, uncons, zipWith, (:))
 import Data.Array as Array
 import Data.Foldable (traverse_)
 import Data.Int (toNumber)
@@ -23,13 +24,15 @@ import Data.Maybe (Maybe(..))
 import Data.Monoid (mempty)
 import Data.String (joinWith)
 import Data.Time.Duration (Milliseconds)
-import Data.Tuple (Tuple(..))
+import Data.Tuple (Tuple(..), fst, snd)
 import Graphics.Canvas (CANVAS, Context2D, clearRect)
+import Type.Data.Boolean (kind Boolean)
 import Vect (Vect(..))
 
 
 type Game =
   { board :: Board (Anim Block)
+  , animationRunning :: Boolean
   }
 
 
@@ -40,50 +43,70 @@ data Event
   | MoveDown
   | Ticked Milliseconds
   
-init :: Game
-init =
-  { board: 
-      emptyBoard 
-      # insertCell 1 1 (Block.create "blue" 1.0 1.0 2 (Vect 1.0 1.0))
-      # insertCell 2 2 (Block.create "red" 1.0 1.0 2 (Vect 2.0 2.0))
-  }
+init :: forall eff . Eff ( random :: RANDOM | eff ) Game
+init = do
+  board <- randomBoard
+  pure 
+    { board: board 
+    , animationRunning: false
+    }
 
 
 speed :: Speed
 speed = 10.0 / 1000.0
 
 
-update :: ∀ eff . Event -> Game -> Eff eff Game
+update :: ∀ eff . Event -> Game -> Eff ( random :: RANDOM |  eff) Game
 update MoveRight game
   | isAnimating game.board = pure game
   | otherwise =
     let board' =
           stackRight (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
           # moveBoardCells speed
-    in pure $ game { board = board' }
+    in pure $ game 
+      { board = board' 
+      , animationRunning = true
+      }
 update MoveLeft game
   | isAnimating game.board = pure game
   | otherwise =
     let board' =
           stackLeft (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
           # moveBoardCells speed
-    in pure $ game { board = board' }
+    in pure $ game
+      { board = board' 
+      , animationRunning = true
+      }
 update MoveUp game
   | isAnimating game.board = pure game
   | otherwise =
     let board' =
           stackTop (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
           # moveBoardCells speed
-    in pure $ game { board = board' }
+    in pure $ game
+      { board = board' 
+      , animationRunning = true
+      }
 update MoveDown game
   | isAnimating game.board = pure game
   | otherwise =
     let board' =
           stackBottom (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
           # moveBoardCells speed
-    in pure $ game { board = board' }
-update (Ticked delta) game = 
-  pure $ game { board = mergeBlocks $ animateBoard delta game.board }
+    in pure $ game 
+      { board = board' 
+      , animationRunning = true
+      }
+update (Ticked delta) game
+  | isAnimating game.board =
+    pure $ game { board = animateBoard delta game.board }
+  | game.animationRunning = do
+    board' <- insertRandom (mergeBlocks game.board)
+    pure $ game
+      { board = board'
+      , animationRunning = false
+      }
+  | otherwise = pure game
 
 
 view :: ∀ eff . Context2D -> Game -> Eff ( canvas :: CANVAS | eff ) Unit
@@ -100,6 +123,13 @@ data Board a =
 derive instance functorBoard :: Functor Board
 
 
+randomBoard :: forall eff . Eff ( random :: RANDOM | eff ) (Board (Anim Block))
+randomBoard = 
+  pure emptyBoard
+  >>= insertRandom 
+  >>= insertRandom
+
+
 emptyBoard :: ∀ a . Board a
 emptyBoard = 
   Board (replicate 4 emptyRow)
@@ -107,15 +137,36 @@ emptyBoard =
     emptyRow = Row (replicate 4 Empty)
 
 
+insertRandom :: forall eff . Board (Anim Block) -> Eff ( random :: RANDOM | eff ) (Board (Anim Block))
+insertRandom board@(Board rows) = do
+  ws4 <- randomRange 0.0 1.0
+  let val = if ws4 > 0.66 then 4 else 2
+  ind <- randomInt 0 (length freePositions - 1)
+  case index freePositions ind of
+    Just (Tuple row col) -> pure $
+      insertCell row col (Block.create 1.0 1.0 val (Vect (toNumber col) (toNumber row))) board
+    Nothing -> pure board
+  where
+    freePositions =
+      mapWithIndex emptyCells rows
+      # concat
+      # filter snd
+      # map fst
+    emptyCells i (Row cells) = mapWithIndex (emptyCell i) cells
+    emptyCell i j Empty = Tuple (Tuple i j) true
+    emptyCell i j _     = Tuple (Tuple i j) false
+
+
 insertCell :: ∀ a . Int -> Int -> a -> Board a -> Board a
 insertCell inRow inCol val (Board rows) =
   Board $ mapWithIndex insertRow rows
   where
-    insertRow row (Row cells) =
-      Row $ mapWithIndex (insertCell row) cells
-    insertCell row col cell
-      | row == inRow && col == inCol = Single val
-      | otherwise                    = cell
+    insertRow row r@(Row cells) 
+      | row == inRow = Row $ mapWithIndex insertCell cells
+      | otherwise    = r
+    insertCell col cell
+      | col == inCol = Single val
+      | otherwise    = cell
 
 
 animateBoard :: ∀ a . Animable a => Milliseconds -> Board a -> Board a

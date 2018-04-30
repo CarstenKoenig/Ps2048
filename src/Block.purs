@@ -10,19 +10,17 @@ import Vect (Vect(..))
 type Color = String
 
 newtype Block = Block
-    { color :: Color
-    , width :: Number
+    { width :: Number
     , height :: Number
     , value :: Int
     , pos :: Pos
     }
 
 
-create :: Color -> Number -> Number -> Int -> Pos -> Anim Block
-create col wdt hgt val p =
+create :: Number -> Number -> Int -> Pos -> Anim Block
+create wdt hgt val p =
     initStatic $ Block
-        { color: col
-        , width: wdt
+        { width: wdt
         , height: hgt
         , value: val
         , pos: p
@@ -47,7 +45,7 @@ merge (Block b1) (Block b2) =
 draw :: forall eff . Context2D -> Block -> Eff ( canvas :: CANVAS | eff ) Unit
 draw ctx (Block b) = do
     void $ beginPath ctx
-    void $ setFillStyle b.color ctx
+    void $ setFillStyle (color b.value) ctx
     void $ fillRect ctx rect
     void $ closePath ctx
 
@@ -64,3 +62,6 @@ draw ctx (Block b) = do
     where
         (Vect x y) = b.pos        
         rect = { x: x, y: y, w: b.width, h: b.height }
+        color 2 = "rgb(244,67,54)"
+        color 4 = "rgb(234,30,99)"
+        color _ = "black"

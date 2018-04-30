@@ -47,7 +47,8 @@ runGameLoop ctx = do
 
     mkGameSignal = do
       sigs <- signals
-      foldEff Game.update Game.init sigs
+      initBoard <- Game.init
+      foldEff Game.update initBoard sigs
 
     signals = do
       leftSignal  <- (\s -> s ~> onDown Game.MoveLeft)  <$> keyPressed 37 

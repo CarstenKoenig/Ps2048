@@ -42,7 +42,7 @@ runGameLoop ctx = do
   where
     view game = do
       Game.view ctx game
-      showGameOver false
+      showGameOver game.gameOver
       -- setScore $ show 0
 
     mkGameSignal = do

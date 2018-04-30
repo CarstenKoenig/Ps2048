@@ -16,11 +16,11 @@ import Block as Block
 import Control.Apply (lift2)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Random (RANDOM, randomInt, randomRange)
-import Data.Array (any, concat, filter, foldr, index, length, mapWithIndex, replicate, uncons, zipWith, (:))
+import Data.Array (any, concat, filter, foldr, index, length, mapWithIndex, null, replicate, uncons, zipWith, (:))
 import Data.Array as Array
 import Data.Foldable (traverse_)
 import Data.Int (toNumber)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Monoid (mempty)
 import Data.String (joinWith)
 import Data.Time.Duration (Milliseconds)
@@ -33,6 +33,7 @@ import Vect (Vect(..))
 type Game =
   { board :: Board (Anim Block)
   , animationRunning :: Boolean
+  , gameOver :: Boolean
   }
 
 
@@ -49,6 +50,7 @@ init = do
   pure 
     { board: board 
     , animationRunning: false
+    , gameOver : false
     }
 
 
@@ -102,10 +104,15 @@ update (Ticked delta) game
     pure $ game { board = animateBoard delta game.board }
   | game.animationRunning = do
     board' <- insertRandom (mergeBlocks game.board)
-    pure $ game
-      { board = board'
-      , animationRunning = false
-      }
+    case board' of
+      Nothing ->
+        pure $ game { animationRunning = false, gameOver = true }
+      Just board' ->
+        pure $ game
+          { board = board'
+          , animationRunning = false
+          , gameOver = false
+          }
   | otherwise = pure game
 
 
@@ -124,10 +131,10 @@ derive instance functorBoard :: Functor Board
 
 
 randomBoard :: forall eff . Eff ( random :: RANDOM | eff ) (Board (Anim Block))
-randomBoard = 
-  pure emptyBoard
-  >>= insertRandom 
-  >>= insertRandom
+randomBoard = do
+  let board = emptyBoard
+  board' <- fromMaybe board <$> insertRandom board
+  fromMaybe board' <$> insertRandom board'
 
 
 emptyBoard :: ∀ a . Board a
@@ -137,21 +144,26 @@ emptyBoard =
     emptyRow = Row (replicate 4 Empty)
 
 
-insertRandom :: forall eff . Board (Anim Block) -> Eff ( random :: RANDOM | eff ) (Board (Anim Block))
+insertRandom :: forall eff . Board (Anim Block) -> Eff ( random :: RANDOM | eff ) (Maybe (Board (Anim Block)))
 insertRandom board@(Board rows) = do
   ws4 <- randomRange 0.0 1.0
   let val = if ws4 > 0.66 then 4 else 2
-  ind <- randomInt 0 (length freePositions - 1)
-  case index freePositions ind of
-    Just (Tuple row col) -> pure $
-      insertCell row col (Block.create 1.0 1.0 val (Vect (toNumber col) (toNumber row))) board
-    Nothing -> pure board
+  let freePoss = freePositions board
+  let freeCount = length freePoss
+  if freeCount <= 0 then pure Nothing else do
+    ind <- randomInt 0 (freeCount - 1)
+    case index freePoss ind of
+      Just (Tuple row col) -> pure $ Just $
+        insertCell row col (Block.create 1.0 1.0 val (Vect (toNumber col) (toNumber row))) board
+      Nothing -> pure Nothing
+
+freePositions :: Board (Anim Block) -> Array (Tuple Int Int)
+freePositions (Board rows) =
+  mapWithIndex emptyCells rows
+  # concat
+  # filter snd
+  # map fst
   where
-    freePositions =
-      mapWithIndex emptyCells rows
-      # concat
-      # filter snd
-      # map fst
     emptyCells i (Row cells) = mapWithIndex (emptyCell i) cells
     emptyCell i j Empty = Tuple (Tuple i j) true
     emptyCell i j _     = Tuple (Tuple i j) false

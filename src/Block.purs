@@ -4,7 +4,7 @@ import Prelude
 
 import Anim (class HasPos, Anim, Pos, initStatic)
 import Control.Monad.Eff (Eff)
-import Graphics.Canvas (CANVAS, Context2D, beginPath, closePath, fillRect, setFillStyle)
+import Graphics.Canvas (CANVAS, Context2D, TextAlign(..), beginPath, closePath, fillRect, fillText, measureText, setFillStyle, setFont, setTextAlign)
 import Vect (Vect(..))
 
 type Color = String
@@ -45,7 +45,17 @@ draw ctx (Block b) = do
     void $ setFillStyle b.color ctx
     void $ fillRect ctx rect
     void $ closePath ctx
+
+    -- Text
+    let text = show b.value
+    void $ setFont "10px Arial" ctx
+    textWidth <- _.width <$> measureText ctx text
+    let adjusted = min 0.8 ( 8.0 / textWidth )
+    void $ setFont (show adjusted <> "px Arial") ctx
+    void $ setFillStyle "white" ctx
+    textHeight <- _.width <$> measureText ctx "M"
+    void $ setTextAlign ctx AlignCenter
+    void $ fillText ctx text (x + 0.5) (y + 0.45 + textHeight / 2.0)
     where
-        rect =
-            let (Vect x y) = b.pos
-            in { x: x, y: y, w: b.width, h: b.height }
+        (Vect x y) = b.pos        
+        rect = { x: x, y: y, w: b.width, h: b.height }

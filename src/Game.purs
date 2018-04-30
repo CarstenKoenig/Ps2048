@@ -43,7 +43,7 @@ init :: Game
 init =
   { board: 
       emptyBoard 
-      # insertCell 1 1 (Block.create "blue" 1.0 1.0 2 (Vect 1.0 1.0))
+      # insertCell 1 1 (Block.create "blue" 1.0 1.0 2048 (Vect 1.0 1.0))
       # insertCell 2 2 (Block.create "red" 1.0 1.0 2 (Vect 2.0 2.0))
   }
 
@@ -188,8 +188,8 @@ reverse (Board rows) =
       Row $ Array.reverse cells
 
 transpose :: ∀ a . Board a -> Board a
-transpose (Board rs) = 
-  Board $ case uncons rs of 
+transpose (Board rows) = 
+  Board $ case uncons rows of 
     Nothing                   -> replicate 4 (Row [])
     Just { head: r, tail: rs} -> zipRowsWith (:) r (transpose (Board rs))
   where

@@ -2,7 +2,7 @@ module Game
   ( Game
   , Event (..)
   , Direction (..)
-  , init
+  , initBoard
   , update
   , view
   , Board, Row (..), Cell (..)
@@ -49,8 +49,8 @@ data Direction
   | Up
   | Down
   
-init :: forall eff . Eff ( random :: RANDOM | eff ) Game
-init = do
+initBoard :: forall eff . Eff ( random :: RANDOM | eff ) Game
+initBoard = do
   board <- randomBoard
   pure 
     { board: board 

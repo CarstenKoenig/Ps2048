@@ -47,7 +47,7 @@ runGameLoop ctx = do
 
     mkGameSignal = do
       sigs <- signals
-      initBoard <- Game.init
+      initBoard <- Game.initBoard
       foldEff Game.update initBoard sigs
 
     signals = do

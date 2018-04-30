@@ -2,7 +2,7 @@ module Game
   ( Game
   , Event (..)
   , Direction (..)
-  , initBoard
+  , init
   , update
   , view
   , Board, Row (..), Cell (..)
@@ -26,7 +26,6 @@ import Data.Monoid (mempty)
 import Data.String (joinWith)
 import Data.Time.Duration (Milliseconds)
 import Data.Tuple (Tuple(..), fst, snd)
-import Debug.Trace (spy)
 import Graphics.Canvas (CANVAS, Context2D, clearRect)
 import Type.Data.Boolean (kind Boolean)
 import Vect (Vect(..))
@@ -43,6 +42,7 @@ type Game =
 data Event 
   = Move Direction
   | Ticked Milliseconds
+  | Reset
 
 
 data Direction
@@ -50,9 +50,10 @@ data Direction
   | Right
   | Up
   | Down
-  
-initBoard :: forall eff . Eff ( random :: RANDOM | eff ) Game
-initBoard = do
+
+
+init :: forall eff . Eff ( random :: RANDOM | eff ) Game
+init = do
   board <- randomBoard
   pure 
     { board: board 
@@ -75,7 +76,7 @@ update (Move dir) game
     in pure $ game 
       { board = board' 
       , animationRunning = true
-      , score = game.score + spy (mergeScore board')
+      , score = game.score + mergeScore board'
       }
   | otherwise = pure game
 update (Ticked delta) game
@@ -93,6 +94,7 @@ update (Ticked delta) game
           , gameOver = not $ any (\mv -> isValidMove eqAnimBlock mv board'') [Left, Right, Up, Down]
           }
   | otherwise = pure game
+update Reset _ = init
 
 
 eqAnimBlock :: Anim Block -> Anim Block -> Boolean

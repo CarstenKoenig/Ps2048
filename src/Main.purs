@@ -6,6 +6,7 @@ import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Random (RANDOM)
 import Control.Monad.Eff.Timer (TIMER)
 import DOM (DOM)
+import Data.Char (toCharCode)
 import Data.Maybe (Maybe(Just))
 import Data.NonEmpty (NonEmpty(..), foldl1)
 import Data.Time.Duration (Milliseconds(..))
@@ -18,6 +19,7 @@ import Partial.Unsafe (unsafePartial)
 import Signal (foldp, merge, runSignal, (~>))
 import Signal.DOM (animationFrame, keyPressed)
 import SignalExt (foldEff)
+
 
 -- | this is the entry point into the app
 -- | we setup the canvas, settings and start the game loop
@@ -47,7 +49,7 @@ runGameLoop ctx = do
 
     mkGameSignal = do
       sigs <- signals
-      initBoard <- Game.initBoard
+      initBoard <- Game.init
       foldEff Game.update initBoard sigs
 
     signals = do
@@ -55,8 +57,9 @@ runGameLoop ctx = do
       upSignal    <- (\s -> s ~> onDown (Game.Move Game.Up))    <$> keyPressed 38
       rightSignal <- (\s -> s ~> onDown (Game.Move Game.Right)) <$> keyPressed 39
       downSignal  <- (\s -> s ~> onDown (Game.Move Game.Down))  <$> keyPressed 40
+      resetSignal <- (\s -> s ~> onDown Game.Reset)             <$> keyPressed (toCharCode 'R')
       tickSignal  <- mkTickSignal
-      pure $ foldl1 merge (NonEmpty tickSignal [leftSignal, upSignal, rightSignal, downSignal])
+      pure $ foldl1 merge (NonEmpty tickSignal [leftSignal, upSignal, rightSignal, downSignal, resetSignal])
 
     mkTickSignal = do
       animFrameSignal <- animationFrame

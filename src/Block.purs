@@ -39,6 +39,11 @@ sameValue (Block b1) (Block b2) =
     b1.value == b2.value
 
 
+merge :: Block -> Block -> Block
+merge (Block b1) (Block b2) =
+    Block $ b1 { value = b1.value + b2.value }    
+
+
 draw :: forall eff . Context2D -> Block -> Eff ( canvas :: CANVAS | eff ) Unit
 draw ctx (Block b) = do
     void $ beginPath ctx

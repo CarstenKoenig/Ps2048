@@ -28,7 +28,6 @@ instance posAnimable :: HasPos a => Animable (Anim a) where
   animate _ a@(Static _) = a
   animate delta (Animated _ anim) = anim delta
 
-
 class HasPos a where
   getPos :: a -> Pos
   setPos :: Pos -> a -> a
@@ -45,6 +44,15 @@ getY a = let (Vect.Vect _ y) = getPos a in y
 data Anim a
     = Static a
     | Animated a (Milliseconds -> Anim a)
+
+
+derive instance functorAnim :: Functor Anim
+
+instance applyAnim :: Apply Anim where
+  apply (Static f) (Static x) = Static (f x)
+  apply (Animated f contF) sX@(Static x) = Animated (f x) (\delta -> apply (contF delta) sX)
+  apply sF@(Static f) (Animated x contX) = Animated (f x) (\delta -> apply sF (contX delta))
+  apply (Animated f contF) (Animated x contX) = Animated (f x) (\delta -> apply (contF delta) (contX delta))
 
 
 current :: forall a . Anim a -> a

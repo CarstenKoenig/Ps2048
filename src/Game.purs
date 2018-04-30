@@ -13,6 +13,7 @@ import Prelude
 import Anim (class Animable, class HasPos, Anim, Speed, animate, current, isMoving, moveTo)
 import Block (Block)
 import Block as Block
+import Control.Apply (lift2)
 import Control.Monad.Eff (Eff)
 import Data.Array (any, foldr, length, mapWithIndex, replicate, uncons, zipWith, (:))
 import Data.Array as Array
@@ -43,7 +44,7 @@ init :: Game
 init =
   { board: 
       emptyBoard 
-      # insertCell 1 1 (Block.create "blue" 1.0 1.0 2048 (Vect 1.0 1.0))
+      # insertCell 1 1 (Block.create "blue" 1.0 1.0 2 (Vect 1.0 1.0))
       # insertCell 2 2 (Block.create "red" 1.0 1.0 2 (Vect 2.0 2.0))
   }
 
@@ -82,7 +83,7 @@ update MoveDown game
           # moveBoardCells speed
     in pure $ game { board = board' }
 update (Ticked delta) game = 
-  pure $ game { board = animateBoard delta game.board }
+  pure $ game { board = mergeBlocks $ animateBoard delta game.board }
 
 
 view :: ∀ eff . Context2D -> Game -> Eff ( canvas :: CANVAS | eff ) Unit
@@ -119,6 +120,12 @@ insertCell inRow inCol val (Board rows) =
 
 animateBoard :: ∀ a . Animable a => Milliseconds -> Board a -> Board a
 animateBoard delta = map (animate delta)
+
+
+mergeBlocks :: Board (Anim Block) -> Board (Anim Block)
+mergeBlocks board@(Board rows)
+  | isAnimating board = board
+  | otherwise         = Board $ map (mergeRow $ lift2 Block.merge) rows
 
 
 viewBoard :: ∀ eff a . (Context2D -> a -> Eff ( canvas :: CANVAS | eff) Unit) -> Board a -> Context2D -> Eff ( canvas :: CANVAS | eff) Unit

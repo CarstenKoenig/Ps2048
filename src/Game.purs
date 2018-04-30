@@ -4,17 +4,20 @@ module Game
   , init
   , update
   , view
-  , Row (..), Cell (..)
+  , Board, Row (..), Cell (..)
   , stackRow
   ) where
 
 import Prelude
 
-import Anim (Anim, Speed, animate, current, getX, getY, isMoving, moveTo)
+import Anim (class Animable, class HasPos, Anim, Speed, animate, current, isMoving, moveTo)
 import Block (Block)
 import Block as Block
 import Control.Monad.Eff (Eff)
-import Data.Array (foldr, length, replicate, uncons, zipWith, (:))
+import Data.Array (any, foldr, length, mapWithIndex, replicate, uncons, zipWith, (:))
+import Data.Array as Array
+import Data.Foldable (traverse_)
+import Data.Int (toNumber)
 import Data.Maybe (Maybe(..))
 import Data.Monoid (mempty)
 import Data.String (joinWith)
@@ -25,7 +28,7 @@ import Vect (Vect(..))
 
 
 type Game =
-  { block :: Anim Block
+  { board :: Board (Anim Block)
   }
 
 
@@ -38,7 +41,10 @@ data Event
   
 init :: Game
 init =
-  { block: Block.create "blue" 1.0 1.0 2 (Vect 0.0 0.0)
+  { board: 
+      emptyBoard 
+      # insertCell 1 1 (Block.create "blue" 1.0 1.0 2 (Vect 1.0 1.0))
+      # insertCell 2 2 (Block.create "red" 1.0 1.0 2 (Vect 2.0 2.0))
   }
 
 
@@ -46,31 +52,43 @@ speed :: Speed
 speed = 10.0 / 1000.0
 
 
-update :: forall eff . Event -> Game -> Eff eff Game
+update :: ∀ eff . Event -> Game -> Eff eff Game
 update MoveRight game
-  | isMoving game.block = pure game
+  | isAnimating game.board = pure game
   | otherwise =
-    pure $ game { block = moveTo speed (Vect 3.0 (getY $ current game.block)) game.block }
+    let board' =
+          stackRight (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
+          # moveBoardCells speed
+    in pure $ game { board = board' }
 update MoveLeft game
-  | isMoving game.block = pure game
+  | isAnimating game.board = pure game
   | otherwise =
-    pure $ game { block = moveTo speed (Vect 0.0 (getY $ current game.block)) game.block }
+    let board' =
+          stackLeft (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
+          # moveBoardCells speed
+    in pure $ game { board = board' }
 update MoveUp game
-  | isMoving game.block = pure game
+  | isAnimating game.board = pure game
   | otherwise =
-    pure $ game { block = moveTo speed (Vect (getX $ current game.block) 0.0) game.block }
+    let board' =
+          stackTop (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
+          # moveBoardCells speed
+    in pure $ game { board = board' }
 update MoveDown game
-  | isMoving game.block = pure game
+  | isAnimating game.board = pure game
   | otherwise =
-    pure $ game { block = moveTo speed (Vect (getX $ current game.block) 3.0) game.block }
+    let board' =
+          stackBottom (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
+          # moveBoardCells speed
+    in pure $ game { board = board' }
 update (Ticked delta) game = 
-  pure $ game { block = animate delta game.block }
+  pure $ game { board = animateBoard delta game.board }
 
 
-view :: forall eff . Context2D -> Game -> Eff ( canvas :: CANVAS | eff ) Unit
+view :: ∀ eff . Context2D -> Game -> Eff ( canvas :: CANVAS | eff ) Unit
 view ctx game = do
   void $ clearRect ctx { x: 0.0, y: 0.0, w: 4.0, h: 4.0 }
-  Block.draw ctx (current game.block)
+  viewBoard (\ctx animBlock -> Block.draw ctx (current animBlock)) game.board ctx
 
 ----------------------------------------------------------------------
 -- representation of the board
@@ -81,7 +99,95 @@ data Board a =
 derive instance functorBoard :: Functor Board
 
 
-transpose :: forall a . Board a -> Board a
+emptyBoard :: ∀ a . Board a
+emptyBoard = 
+  Board (replicate 4 emptyRow)
+  where
+    emptyRow = Row (replicate 4 Empty)
+
+
+insertCell :: ∀ a . Int -> Int -> a -> Board a -> Board a
+insertCell inRow inCol val (Board rows) =
+  Board $ mapWithIndex insertRow rows
+  where
+    insertRow row (Row cells) =
+      Row $ mapWithIndex (insertCell row) cells
+    insertCell row col cell
+      | row == inRow && col == inCol = Single val
+      | otherwise                    = cell
+
+
+animateBoard :: ∀ a . Animable a => Milliseconds -> Board a -> Board a
+animateBoard delta = map (animate delta)
+
+
+viewBoard :: ∀ eff a . (Context2D -> a -> Eff ( canvas :: CANVAS | eff) Unit) -> Board a -> Context2D -> Eff ( canvas :: CANVAS | eff) Unit
+viewBoard viewVal (Board rows) ctx =
+  traverse_ viewRow rows
+  where
+    viewRow (Row cells) =
+      traverse_ viewCol cells
+    viewCol Empty =
+      pure unit
+    viewCol (Single val) =
+      viewVal ctx val
+    viewCol (Double val1 val2) = do
+      viewVal ctx val1
+      viewVal ctx val2
+
+
+isAnimating :: ∀ a . Board (Anim a) -> Boolean
+isAnimating (Board rows) =
+  any isRowAnimating rows
+  where
+    isRowAnimating (Row cells) =
+      any isCellAnimating cells
+    isCellAnimating Empty = false
+    isCellAnimating (Single v) = isMoving v
+    isCellAnimating (Double v1 v2) = isMoving v1 || isMoving v2
+
+
+moveBoardCells :: ∀ eff a . HasPos a =>  Speed -> Board (Anim a) -> Board (Anim a)
+moveBoardCells speed (Board rows) =
+  Board $ mapWithIndex moveRow rows
+  where
+    moveRow i (Row cells) =
+      Row $ mapWithIndex (moveCol i) cells
+    moveCol _ _ Empty =
+      Empty
+    moveCol rowNr colNr (Single val) =
+      Single (moveTo speed (Vect (toNumber colNr) (toNumber rowNr)) val)
+    moveCol rowNr colNr (Double val1 val2) =
+      let mov1 = moveTo speed (Vect (toNumber colNr) (toNumber rowNr)) val1
+          mov2 = moveTo speed (Vect (toNumber colNr) (toNumber rowNr)) val2
+      in Double mov1 mov2
+
+
+stackRight :: ∀ a . (a -> a -> Boolean) -> Board a -> Board a
+stackRight eqVal (Board rows) =
+  Board $ map (stackRow eqVal) rows
+
+
+stackLeft :: ∀ a . (a -> a -> Boolean) -> Board a -> Board a
+stackLeft eqVal = reverse >>> stackRight eqVal >>> reverse
+
+
+stackBottom :: ∀ a . (a -> a -> Boolean) -> Board a -> Board a
+stackBottom eqVal = transpose >>> stackRight eqVal >>> transpose
+
+
+stackTop :: ∀ a . (a -> a -> Boolean) -> Board a -> Board a
+stackTop eqVal = transpose >>> reverse >>> stackRight eqVal >>> reverse >>> transpose
+
+
+reverse :: ∀ a . Board a -> Board a
+reverse (Board rows) =
+  Board $ map reverseRow rows
+  where
+    reverseRow (Row cells) =
+      Row $ Array.reverse cells
+
+transpose :: ∀ a . Board a -> Board a
 transpose (Board rs) = 
   Board $ case uncons rs of 
     Nothing                   -> replicate 4 (Row [])
@@ -114,7 +220,7 @@ instance showCell :: Show a => Show (Cell a) where
   show (Double a1 a2) = "[" <> show a1 <> ", " <> show a2 <> "]"
 
 
-stackRow :: forall a . (a -> a -> Boolean) -> Row a -> Row a
+stackRow :: ∀ a . (a -> a -> Boolean) -> Row a -> Row a
 stackRow eqVal (Row cs) = 
   Row $ fillUp $ stackLast $ foldr stackCells (Tuple mempty Nothing) cs
   where 
@@ -134,7 +240,7 @@ stackRow eqVal (Row cs) =
     cellVal (Double a _) = Just a
 
 
-mergeRow :: forall a . (a -> a -> a) -> Row a -> Row a
+mergeRow :: ∀ a . (a -> a -> a) -> Row a -> Row a
 mergeRow merge (Row cs) = Row $ map mergeCell cs
   where
     mergeCell Empty = Empty

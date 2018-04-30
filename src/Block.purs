@@ -34,6 +34,11 @@ instance hasPosBlock :: HasPos Block where
     setPos p (Block b) = Block (b { pos = p } )
 
 
+sameValue :: Block -> Block -> Boolean
+sameValue (Block b1) (Block b2) = 
+    b1.value == b2.value
+
+
 draw :: forall eff . Context2D -> Block -> Eff ( canvas :: CANVAS | eff ) Unit
 draw ctx (Block b) = do
     void $ beginPath ctx

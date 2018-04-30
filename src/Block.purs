@@ -32,6 +32,10 @@ instance hasPosBlock :: HasPos Block where
     setPos p (Block b) = Block (b { pos = p } )
 
 
+value :: Block -> Int
+value (Block b) = b.value
+
+
 sameValue :: Block -> Block -> Boolean
 sameValue (Block b1) (Block b2) = 
     b1.value == b2.value

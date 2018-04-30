@@ -19,13 +19,14 @@ import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Random (RANDOM, randomInt, randomRange)
 import Data.Array (any, concat, filter, foldr, index, length, mapWithIndex, replicate, uncons, zipWith, (:))
 import Data.Array as Array
-import Data.Foldable (and, traverse_)
+import Data.Foldable (and, sum, traverse_)
 import Data.Int (toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Monoid (mempty)
 import Data.String (joinWith)
 import Data.Time.Duration (Milliseconds)
 import Data.Tuple (Tuple(..), fst, snd)
+import Debug.Trace (spy)
 import Graphics.Canvas (CANVAS, Context2D, clearRect)
 import Type.Data.Boolean (kind Boolean)
 import Vect (Vect(..))
@@ -35,6 +36,7 @@ type Game =
   { board :: Board (Anim Block)
   , animationRunning :: Boolean -- used to trigger merge/insert after animation ended
   , gameOver :: Boolean
+  , score :: Int
   }
 
 
@@ -56,6 +58,7 @@ initBoard = do
     { board: board 
     , animationRunning: false
     , gameOver : false
+    , score : 0
     }
 
 
@@ -72,6 +75,7 @@ update (Move dir) game
     in pure $ game 
       { board = board' 
       , animationRunning = true
+      , score = game.score + spy (mergeScore board')
       }
   | otherwise = pure game
 update (Ticked delta) game
@@ -169,6 +173,17 @@ mergeBlocks :: Board (Anim Block) -> Board (Anim Block)
 mergeBlocks board@(Board rows)
   | isAnimating board = board
   | otherwise         = Board $ map (mergeRow $ lift2 Block.merge) rows
+
+
+mergeScore :: Board (Anim Block) -> Int
+mergeScore board@(Board rows) =
+    sum $ map mergeScoreRow rows
+    where 
+      mergeScoreRow (Row cells) =
+        sum $ map mergeScoreCell cells
+      mergeScoreCell Empty = 0
+      mergeScoreCell (Single _) = 0
+      mergeScoreCell (Double a _) = Block.value (current a)
 
 
 viewBoard :: ∀ eff a . (Context2D -> a -> Eff ( canvas :: CANVAS | eff) Unit) -> Board a -> Context2D -> Eff ( canvas :: CANVAS | eff) Unit

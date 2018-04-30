@@ -12,7 +12,7 @@ import Data.Time.Duration (Milliseconds(..))
 import Data.Tuple (Tuple(..), fst)
 import Game as Game
 import Graphics.Canvas (CANVAS, CanvasElement, Context2D, ScaleTransform, getCanvasElementById, getCanvasHeight, getCanvasWidth, getContext2D, scale)
-import JQuery (showGameOver)
+import JQuery (setScore, showGameOver)
 import Math (abs)
 import Partial.Unsafe (unsafePartial)
 import Signal (foldp, merge, runSignal, (~>))
@@ -43,7 +43,7 @@ runGameLoop ctx = do
     view game = do
       Game.view ctx game
       showGameOver game.gameOver
-      -- setScore $ show 0
+      setScore $ show game.score
 
     mkGameSignal = do
       sigs <- signals

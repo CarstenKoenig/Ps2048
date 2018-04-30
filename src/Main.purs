@@ -51,10 +51,10 @@ runGameLoop ctx = do
       foldEff Game.update initBoard sigs
 
     signals = do
-      leftSignal  <- (\s -> s ~> onDown Game.MoveLeft)  <$> keyPressed 37 
-      upSignal    <- (\s -> s ~> onDown Game.MoveUp)    <$> keyPressed 38
-      rightSignal <- (\s -> s ~> onDown Game.MoveRight) <$> keyPressed 39
-      downSignal  <- (\s -> s ~> onDown Game.MoveDown)  <$> keyPressed 40
+      leftSignal  <- (\s -> s ~> onDown (Game.Move Game.Left))  <$> keyPressed 37 
+      upSignal    <- (\s -> s ~> onDown (Game.Move Game.Up))    <$> keyPressed 38
+      rightSignal <- (\s -> s ~> onDown (Game.Move Game.Right)) <$> keyPressed 39
+      downSignal  <- (\s -> s ~> onDown (Game.Move Game.Down))  <$> keyPressed 40
       tickSignal  <- mkTickSignal
       pure $ foldl1 merge (NonEmpty tickSignal [leftSignal, upSignal, rightSignal, downSignal])
 

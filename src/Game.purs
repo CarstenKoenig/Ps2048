@@ -1,6 +1,7 @@
 module Game 
   ( Game
   , Event (..)
+  , Direction (..)
   , init
   , update
   , view
@@ -16,9 +17,9 @@ import Block as Block
 import Control.Apply (lift2)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Random (RANDOM, randomInt, randomRange)
-import Data.Array (any, concat, filter, foldr, index, length, mapWithIndex, null, replicate, uncons, zipWith, (:))
+import Data.Array (any, concat, filter, foldr, index, length, mapWithIndex, replicate, uncons, zipWith, (:))
 import Data.Array as Array
-import Data.Foldable (traverse_)
+import Data.Foldable (and, traverse_)
 import Data.Int (toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Monoid (mempty)
@@ -32,17 +33,21 @@ import Vect (Vect(..))
 
 type Game =
   { board :: Board (Anim Block)
-  , animationRunning :: Boolean
+  , animationRunning :: Boolean -- used to trigger merge/insert after animation ended
   , gameOver :: Boolean
   }
 
 
 data Event 
-  = MoveLeft
-  | MoveRight
-  | MoveUp
-  | MoveDown
+  = Move Direction
   | Ticked Milliseconds
+
+
+data Direction
+  = Left
+  | Right
+  | Up
+  | Down
   
 init :: forall eff . Eff ( random :: RANDOM | eff ) Game
 init = do
@@ -59,46 +64,16 @@ speed = 10.0 / 1000.0
 
 
 update :: ∀ eff . Event -> Game -> Eff ( random :: RANDOM |  eff) Game
-update MoveRight game
-  | isAnimating game.board = pure game
-  | otherwise =
+update (Move dir) game
+  | not (isAnimating game.board) && isValidMove eqAnimBlock dir game.board =
     let board' =
-          stackRight (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
+          stackMove eqAnimBlock dir game.board
           # moveBoardCells speed
     in pure $ game 
       { board = board' 
       , animationRunning = true
       }
-update MoveLeft game
-  | isAnimating game.board = pure game
-  | otherwise =
-    let board' =
-          stackLeft (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
-          # moveBoardCells speed
-    in pure $ game
-      { board = board' 
-      , animationRunning = true
-      }
-update MoveUp game
-  | isAnimating game.board = pure game
-  | otherwise =
-    let board' =
-          stackTop (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
-          # moveBoardCells speed
-    in pure $ game
-      { board = board' 
-      , animationRunning = true
-      }
-update MoveDown game
-  | isAnimating game.board = pure game
-  | otherwise =
-    let board' =
-          stackBottom (\ab1 ab2 -> Block.sameValue (current ab1) (current ab2)) game.board
-          # moveBoardCells speed
-    in pure $ game 
-      { board = board' 
-      , animationRunning = true
-      }
+  | otherwise = pure game
 update (Ticked delta) game
   | isAnimating game.board =
     pure $ game { board = animateBoard delta game.board }
@@ -107,19 +82,23 @@ update (Ticked delta) game
     case board' of
       Nothing ->
         pure $ game { animationRunning = false, gameOver = true }
-      Just board' ->
+      Just board'' ->
         pure $ game
-          { board = board'
+          { board = board''
           , animationRunning = false
-          , gameOver = false
+          , gameOver = not $ any (\mv -> isValidMove eqAnimBlock mv board'') [Left, Right, Up, Down]
           }
   | otherwise = pure game
+
+
+eqAnimBlock :: Anim Block -> Anim Block -> Boolean
+eqAnimBlock ab1 ab2 = Block.sameValue (current ab1) (current ab2)
 
 
 view :: ∀ eff . Context2D -> Game -> Eff ( canvas :: CANVAS | eff ) Unit
 view ctx game = do
   void $ clearRect ctx { x: 0.0, y: 0.0, w: 4.0, h: 4.0 }
-  viewBoard (\ctx animBlock -> Block.draw ctx (current animBlock)) game.board ctx
+  viewBoard (\ctx' animBlock -> Block.draw ctx' (current animBlock)) game.board ctx
 
 ----------------------------------------------------------------------
 -- representation of the board
@@ -157,6 +136,7 @@ insertRandom board@(Board rows) = do
         insertCell row col (Block.create 1.0 1.0 val (Vect (toNumber col) (toNumber row))) board
       Nothing -> pure Nothing
 
+
 freePositions :: Board (Anim Block) -> Array (Tuple Int Int)
 freePositions (Board rows) =
   mapWithIndex emptyCells rows
@@ -174,9 +154,9 @@ insertCell inRow inCol val (Board rows) =
   Board $ mapWithIndex insertRow rows
   where
     insertRow row r@(Row cells) 
-      | row == inRow = Row $ mapWithIndex insertCell cells
+      | row == inRow = Row $ mapWithIndex insertCell' cells
       | otherwise    = r
-    insertCell col cell
+    insertCell' col cell
       | col == inCol = Single val
       | otherwise    = cell
 
@@ -217,8 +197,8 @@ isAnimating (Board rows) =
     isCellAnimating (Double v1 v2) = isMoving v1 || isMoving v2
 
 
-moveBoardCells :: ∀ eff a . HasPos a =>  Speed -> Board (Anim a) -> Board (Anim a)
-moveBoardCells speed (Board rows) =
+moveBoardCells :: ∀ a . HasPos a =>  Speed -> Board (Anim a) -> Board (Anim a)
+moveBoardCells sp (Board rows) =
   Board $ mapWithIndex moveRow rows
   where
     moveRow i (Row cells) =
@@ -226,14 +206,34 @@ moveBoardCells speed (Board rows) =
     moveCol _ _ Empty =
       Empty
     moveCol rowNr colNr (Single val) =
-      Single (moveTo speed (Vect (toNumber colNr) (toNumber rowNr)) val)
+      Single (moveTo sp (Vect (toNumber colNr) (toNumber rowNr)) val)
     moveCol rowNr colNr (Double val1 val2) =
-      let mov1 = moveTo speed (Vect (toNumber colNr) (toNumber rowNr)) val1
-          mov2 = moveTo speed (Vect (toNumber colNr) (toNumber rowNr)) val2
+      let mov1 = moveTo sp (Vect (toNumber colNr) (toNumber rowNr)) val1
+          mov2 = moveTo sp (Vect (toNumber colNr) (toNumber rowNr)) val2
       in Double mov1 mov2
 
 
-stackRight :: ∀ a . (a -> a -> Boolean) -> Board a -> Board a
+isValidMove :: forall a . (a -> a -> Boolean) -> Direction -> Board a -> Boolean
+isValidMove eqVal dir board@(Board rows) =
+  let board'@(Board rows') = stackMove eqVal dir board
+  in not $ and $ zipWith sameRow rows rows'
+  where
+    sameRow (Row cells) (Row cells') = 
+      and $ zipWith sameCell cells cells'
+    sameCell Empty Empty = true
+    sameCell (Single v) (Single v') = eqVal v v'
+    sameCell (Double v1 v2) (Double v1' v2') = eqVal v1 v1' && eqVal v2 v2'
+    sameCell _ _ = false
+
+
+stackMove :: forall a . (a -> a -> Boolean) -> Direction -> Board a -> Board a
+stackMove eqVal Left  = stackLeft eqVal
+stackMove eqVal Right = stackRight eqVal
+stackMove eqVal Up    = stackTop eqVal
+stackMove eqVal Down  = stackBottom eqVal
+
+
+stackRight :: forall a . (a -> a -> Boolean) -> Board a -> Board a
 stackRight eqVal (Board rows) =
   Board $ map (stackRow eqVal) rows
 
@@ -264,7 +264,7 @@ transpose (Board rows) =
     Just { head: r, tail: rs} -> zipRowsWith (:) r (transpose (Board rs))
   where
     zipRowsWith op (Row cs) (Board rs) = 
-      zipWith (\c (Row cs) -> Row (c `op` cs)) cs rs
+      zipWith (\c' (Row cs') -> Row (c' `op` cs')) cs rs
 
 
 data Row a 

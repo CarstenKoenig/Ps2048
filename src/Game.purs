@@ -11,15 +11,15 @@ module Game
 
 import Prelude
 
-import Anim (class Animable, class HasPos, Anim, Speed, animate, current, isMoving, moveTo)
+import Anim (class Animable, animate, isRunning)
+import AnimPos (Speed)
 import Block (Block)
 import Block as Block
-import Control.Apply (lift2)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Random (RANDOM, randomInt, randomRange)
-import Data.Array (any, concat, filter, foldr, index, length, mapWithIndex, replicate, uncons, zipWith, (:))
+import Data.Array (any, concat, concatMap, filter, foldMap, foldl, foldr, index, length, mapWithIndex, replicate, uncons, zipWith, (:))
 import Data.Array as Array
-import Data.Foldable (and, sum, traverse_)
+import Data.Foldable (class Foldable, and, sum, traverse_)
 import Data.Int (toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Monoid (mempty)
@@ -32,7 +32,7 @@ import Vect (Vect(..))
 
 
 type Game =
-  { board :: Board (Anim Block)
+  { board :: Board Block
   , animationRunning :: Boolean -- used to trigger merge/insert after animation ended
   , gameOver :: Boolean
   , score :: Int
@@ -69,7 +69,7 @@ speed = 10.0 / 1000.0
 
 update :: ∀ eff . Event -> Game -> Eff ( random :: RANDOM |  eff) Game
 update (Move dir) game
-  | not (isAnimating game.board) && isValidMove eqAnimBlock dir game.board =
+  | not (isRunning game.board) && isValidMove eqAnimBlock dir game.board =
     let board' =
           stackMove eqAnimBlock dir game.board
           # moveBoardCells speed
@@ -80,8 +80,8 @@ update (Move dir) game
       }
   | otherwise = pure game
 update (Ticked delta) game
-  | isAnimating game.board =
-    pure $ game { board = animateBoard delta game.board }
+  | isRunning game.board =
+    pure $ game { board = animate delta game.board }
   | game.animationRunning = do
     board' <- insertRandom (mergeBlocks game.board)
     case board' of
@@ -97,14 +97,14 @@ update (Ticked delta) game
 update Reset _ = init
 
 
-eqAnimBlock :: Anim Block -> Anim Block -> Boolean
-eqAnimBlock ab1 ab2 = Block.sameValue (current ab1) (current ab2)
+eqAnimBlock :: Block -> Block -> Boolean
+eqAnimBlock = Block.sameValue
 
 
 view :: ∀ eff . Context2D -> Game -> Eff ( canvas :: CANVAS | eff ) Unit
 view ctx game = do
   void $ clearRect ctx { x: 0.0, y: 0.0, w: 4.0, h: 4.0 }
-  viewBoard (\ctx' animBlock -> Block.draw ctx' (current animBlock)) game.board ctx
+  viewBoard Block.draw game.board ctx
 
 ----------------------------------------------------------------------
 -- representation of the board
@@ -114,8 +114,26 @@ data Board a =
 
 derive instance functorBoard :: Functor Board
 
+instance foldableBoard :: Foldable Board where
+  foldMap inj board = foldMap inj (cellValues board)
+  foldr f s board = foldr f s (cellValues board)
+  foldl f s board = foldl f s (cellValues board)
 
-randomBoard :: forall eff . Eff ( random :: RANDOM | eff ) (Board (Anim Block))
+
+cellValues :: forall a . Board a -> Array a
+cellValues (Board rows) = concatMap getVals rows  
+  where getVals (Row cells) = concatMap getCell cells
+        getCell Empty = []
+        getCell (Single v) = [v]
+        getCell (Double v1 v2) = [v1, v2]
+
+
+instance boardAnimable :: Animable a => Animable (Board a) where
+  animate delta = map (animate delta)
+  isRunning = any isRunning
+
+
+randomBoard :: forall eff . Eff ( random :: RANDOM | eff ) (Board Block)
 randomBoard = do
   let board = emptyBoard
   board' <- fromMaybe board <$> insertRandom board
@@ -129,7 +147,7 @@ emptyBoard =
     emptyRow = Row (replicate 4 Empty)
 
 
-insertRandom :: forall eff . Board (Anim Block) -> Eff ( random :: RANDOM | eff ) (Maybe (Board (Anim Block)))
+insertRandom :: forall eff . Board Block -> Eff ( random :: RANDOM | eff ) (Maybe (Board Block))
 insertRandom board@(Board rows) = do
   ws4 <- randomRange 0.0 1.0
   let val = if ws4 > 0.66 then 4 else 2
@@ -143,7 +161,7 @@ insertRandom board@(Board rows) = do
       Nothing -> pure Nothing
 
 
-freePositions :: Board (Anim Block) -> Array (Tuple Int Int)
+freePositions :: Board Block -> Array (Tuple Int Int)
 freePositions (Board rows) =
   mapWithIndex emptyCells rows
   # concat
@@ -167,17 +185,13 @@ insertCell inRow inCol val (Board rows) =
       | otherwise    = cell
 
 
-animateBoard :: ∀ a . Animable a => Milliseconds -> Board a -> Board a
-animateBoard delta = map (animate delta)
-
-
-mergeBlocks :: Board (Anim Block) -> Board (Anim Block)
+mergeBlocks :: Board Block -> Board Block
 mergeBlocks board@(Board rows)
-  | isAnimating board = board
-  | otherwise         = Board $ map (mergeRow $ lift2 Block.merge) rows
+  | isRunning board = board
+  | otherwise         = Board $ map (mergeRow Block.merge) rows
 
 
-mergeScore :: Board (Anim Block) -> Int
+mergeScore :: Board Block -> Int
 mergeScore board@(Board rows) =
     sum $ map mergeScoreRow rows
     where 
@@ -185,7 +199,7 @@ mergeScore board@(Board rows) =
         sum $ map mergeScoreCell cells
       mergeScoreCell Empty = 0
       mergeScoreCell (Single _) = 0
-      mergeScoreCell (Double a _) = Block.value (current a)
+      mergeScoreCell (Double a _) = Block.value a
 
 
 viewBoard :: ∀ eff a . (Context2D -> a -> Eff ( canvas :: CANVAS | eff) Unit) -> Board a -> Context2D -> Eff ( canvas :: CANVAS | eff) Unit
@@ -203,18 +217,8 @@ viewBoard viewVal (Board rows) ctx =
       viewVal ctx val2
 
 
-isAnimating :: ∀ a . Board (Anim a) -> Boolean
-isAnimating (Board rows) =
-  any isRowAnimating rows
-  where
-    isRowAnimating (Row cells) =
-      any isCellAnimating cells
-    isCellAnimating Empty = false
-    isCellAnimating (Single v) = isMoving v
-    isCellAnimating (Double v1 v2) = isMoving v1 || isMoving v2
 
-
-moveBoardCells :: ∀ a . HasPos a =>  Speed -> Board (Anim a) -> Board (Anim a)
+moveBoardCells :: Speed -> Board Block -> Board Block
 moveBoardCells sp (Board rows) =
   Board $ mapWithIndex moveRow rows
   where
@@ -223,10 +227,10 @@ moveBoardCells sp (Board rows) =
     moveCol _ _ Empty =
       Empty
     moveCol rowNr colNr (Single val) =
-      Single (moveTo sp (Vect (toNumber colNr) (toNumber rowNr)) val)
+      Single (Block.move sp (Vect (toNumber colNr) (toNumber rowNr)) val)
     moveCol rowNr colNr (Double val1 val2) =
-      let mov1 = moveTo sp (Vect (toNumber colNr) (toNumber rowNr)) val1
-          mov2 = moveTo sp (Vect (toNumber colNr) (toNumber rowNr)) val2
+      let mov1 = Block.move sp (Vect (toNumber colNr) (toNumber rowNr)) val1
+          mov2 = Block.move sp (Vect (toNumber colNr) (toNumber rowNr)) val2
       in Double mov1 mov2
 
 

@@ -20,19 +20,19 @@ import Control.Monad.Eff.Random (RANDOM, randomInt, randomRange)
 import Data.Array (any, concat, concatMap, filter, foldMap, foldl, foldr, index, length, mapWithIndex, replicate, uncons, zipWith, (:))
 import Data.Array as Array
 import Data.Foldable (class Foldable, and, sum, traverse_)
-import Data.Int (toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Monoid (mempty)
 import Data.String (joinWith)
 import Data.Time.Duration (Milliseconds)
 import Data.Tuple (Tuple(..), fst, snd)
+import DrawParams (Settings)
 import Graphics.Canvas (CANVAS, Context2D, clearRect)
 import Type.Data.Boolean (kind Boolean)
-import Vect (Vect(..))
 
 
 type Game =
-  { board :: Board Block
+  { params :: Settings
+  , board :: Board Block
   , animationRunning :: Boolean -- used to trigger merge/insert after animation ended
   , gameOver :: Boolean
   , score :: Int
@@ -52,11 +52,12 @@ data Direction
   | Down
 
 
-init :: forall eff . Eff ( random :: RANDOM | eff ) Game
-init = do
-  board <- randomBoard
+init :: forall eff . Settings -> Eff ( random :: RANDOM | eff ) Game
+init params = do
+  board <- randomBoard params
   pure 
-    { board: board 
+    { params: params
+    , board: board 
     , animationRunning: false
     , gameOver : false
     , score : 0
@@ -64,7 +65,7 @@ init = do
 
 
 speed :: Speed
-speed = 10.0 / 1000.0
+speed = 500.0 / 1000.0
 
 
 update :: ∀ eff . Event -> Game -> Eff ( random :: RANDOM |  eff) Game
@@ -72,7 +73,7 @@ update (Move dir) game
   | not (isRunning game.board) && isValidMove eqAnimBlock dir game.board =
     let board' =
           stackMove eqAnimBlock dir game.board
-          # moveBoardCells speed
+          # moveBoardCells game.params speed
     in pure $ game 
       { board = board' 
       , animationRunning = true
@@ -83,7 +84,7 @@ update (Ticked delta) game
   | isRunning game.board =
     pure $ game { board = animate delta game.board }
   | game.animationRunning = do
-    board' <- insertRandom (mergeBlocks game.board)
+    board' <- insertRandom game.params (mergeBlocks game.board)
     case board' of
       Nothing ->
         pure $ game { animationRunning = false, gameOver = true }
@@ -94,7 +95,7 @@ update (Ticked delta) game
           , gameOver = not $ any (\mv -> isValidMove eqAnimBlock mv board'') [Left, Right, Up, Down]
           }
   | otherwise = pure game
-update Reset _ = init
+update Reset game = init game.params
 
 
 eqAnimBlock :: Block -> Block -> Boolean
@@ -103,8 +104,8 @@ eqAnimBlock = Block.sameValue
 
 view :: ∀ eff . Context2D -> Game -> Eff ( canvas :: CANVAS | eff ) Unit
 view ctx game = do
-  void $ clearRect ctx { x: 0.0, y: 0.0, w: 4.0, h: 4.0 }
-  viewBoard Block.draw game.board ctx
+  void $ clearRect ctx { x: 0.0, y: 0.0, w: game.params.canvasWidth, h: game.params.canvasHeight }
+  viewBoard (Block.draw game.params) game.board ctx
 
 ----------------------------------------------------------------------
 -- representation of the board
@@ -133,11 +134,11 @@ instance boardAnimable :: Animable a => Animable (Board a) where
   isRunning = any isRunning
 
 
-randomBoard :: forall eff . Eff ( random :: RANDOM | eff ) (Board Block)
-randomBoard = do
+randomBoard :: forall eff . Settings -> Eff ( random :: RANDOM | eff ) (Board Block)
+randomBoard params = do
   let board = emptyBoard
-  board' <- fromMaybe board <$> insertRandom board
-  fromMaybe board' <$> insertRandom board'
+  board' <- fromMaybe board <$> insertRandom params board
+  fromMaybe board' <$> insertRandom params board'
 
 
 emptyBoard :: ∀ a . Board a
@@ -147,8 +148,8 @@ emptyBoard =
     emptyRow = Row (replicate 4 Empty)
 
 
-insertRandom :: forall eff . Board Block -> Eff ( random :: RANDOM | eff ) (Maybe (Board Block))
-insertRandom board@(Board rows) = do
+insertRandom :: forall eff . Settings -> Board Block -> Eff ( random :: RANDOM | eff ) (Maybe (Board Block))
+insertRandom params board@(Board rows) = do
   ws4 <- randomRange 0.0 1.0
   let val = if ws4 > 0.66 then 4 else 2
   let freePoss = freePositions board
@@ -157,7 +158,7 @@ insertRandom board@(Board rows) = do
     ind <- randomInt 0 (freeCount - 1)
     case index freePoss ind of
       Just (Tuple row col) -> pure $ Just $
-        insertCell row col (Block.create 1.0 1.0 val (Vect (toNumber col) (toNumber row))) board
+        insertCell row col (Block.create params val col row) board
       Nothing -> pure Nothing
 
 
@@ -218,8 +219,8 @@ viewBoard viewVal (Board rows) ctx =
 
 
 
-moveBoardCells :: Speed -> Board Block -> Board Block
-moveBoardCells sp (Board rows) =
+moveBoardCells :: Settings -> Speed -> Board Block -> Board Block
+moveBoardCells params sp (Board rows) =
   Board $ mapWithIndex moveRow rows
   where
     moveRow i (Row cells) =
@@ -227,10 +228,10 @@ moveBoardCells sp (Board rows) =
     moveCol _ _ Empty =
       Empty
     moveCol rowNr colNr (Single val) =
-      Single (Block.move sp (Vect (toNumber colNr) (toNumber rowNr)) val)
+      Single (Block.move params sp colNr rowNr val)
     moveCol rowNr colNr (Double val1 val2) =
-      let mov1 = Block.move sp (Vect (toNumber colNr) (toNumber rowNr)) val1
-          mov2 = Block.move sp (Vect (toNumber colNr) (toNumber rowNr)) val2
+      let mov1 = Block.move params sp colNr rowNr val1
+          mov2 = Block.move params sp colNr rowNr val2
       in Double mov1 mov2
 
 

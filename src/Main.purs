@@ -11,6 +11,8 @@ import Data.Maybe (Maybe(Just))
 import Data.NonEmpty (NonEmpty(..), foldl1)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Tuple (Tuple(..), fst)
+import DrawParams (Settings)
+import DrawParams as DrawParams
 import Game as Game
 import Graphics.Canvas (CANVAS, CanvasElement, Context2D, ScaleTransform, getCanvasElementById, getCanvasHeight, getCanvasWidth, getContext2D, scale)
 import JQuery (setScore, showGameOver)
@@ -25,19 +27,21 @@ import SignalExt (foldEff)
 -- | we setup the canvas, settings and start the game loop
 main :: ∀ e. Eff ( canvas :: CANVAS, timer :: TIMER, dom :: DOM, random :: RANDOM | e) Unit
 main = void $ unsafePartial do
-    Just canvas <- getCanvasElementById "canvas"
-    ctx <- getContext2D canvas
+  let params = DrawParams.create 400.0 400.0
 
-    scaling <- calculateScaling canvas
-    _ <- scale scaling ctx
+  Just canvas <- getCanvasElementById "canvas"
+  ctx <- getContext2D canvas
 
-    runGameLoop ctx 
+  scaling <- calculateScaling params canvas
+  _ <- scale scaling ctx
+
+  runGameLoop params ctx 
 
 -- | we are using `Signal` to map `animationFrame` and keyboard signals into
 -- | a `GameState`-signal using `Game.update`
 -- | finally we run this signal using `view`
-runGameLoop :: ∀ e. Context2D -> Eff (timer :: TIMER, canvas :: CANVAS, random :: RANDOM, dom :: DOM | e) Unit
-runGameLoop ctx = do
+runGameLoop :: ∀ e. Settings -> Context2D -> Eff (timer :: TIMER, canvas :: CANVAS, random :: RANDOM, dom :: DOM | e) Unit
+runGameLoop params ctx = do
   gameSignal <- mkGameSignal
   runSignal $ view <$> gameSignal
 
@@ -49,7 +53,7 @@ runGameLoop ctx = do
 
     mkGameSignal = do
       sigs <- signals
-      initBoard <- Game.init
+      initBoard <- Game.init params
       foldEff Game.update initBoard sigs
 
     signals = do
@@ -72,9 +76,8 @@ runGameLoop ctx = do
 
 
 -- calculates a ScaleTransform so we can use 1pixel per block
-calculateScaling :: ∀ e. CanvasElement         
-        -> Eff ( canvas :: CANVAS | e) ScaleTransform            
-calculateScaling canvas = do
+calculateScaling :: ∀ e. Settings -> CanvasElement -> Eff ( canvas :: CANVAS | e) ScaleTransform            
+calculateScaling params canvas = do
   cW <- getCanvasWidth canvas
   cH <- getCanvasHeight canvas
-  pure { scaleX: cW / 4.0, scaleY: cH / 4.0 }
+  pure { scaleX: cW / params.canvasWidth, scaleY: cH / params.canvasHeight }

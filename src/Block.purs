@@ -3,17 +3,20 @@ module Block where
 import Prelude
 
 import Anim (class Animable, Anim, animate, current, isRunning)
+import AnimColor (Color)
+import AnimColor as Color
 import AnimPos (Pos, moveTo)
 import Control.Monad.Eff (Eff)
+import Data.Time.Duration (Milliseconds(..))
 import DrawParams (Settings)
 import Graphics.Canvas (CANVAS, Context2D, TextAlign(..), beginPath, closePath, fillRect, fillText, measureText, setFillStyle, setFont, setTextAlign)
 import Vect (Vect(..))
 
-type Color = String
 
 newtype Block = Block
     { value  :: Int
     , pos    :: Anim Pos
+    , color  :: Anim Color
     }
 
 
@@ -22,12 +25,18 @@ create params val x y =
     Block
         { value: val
         , pos: pure (params.toPos x y)
+        , color: pure (valueToColor val)
         }
 
 
 instance blockAnimable :: Animable Block where
-    animate delta (Block b) = Block $ b { pos = animate delta b.pos }
-    isRunning (Block b)     = isRunning b.pos
+    animate delta (Block b) = 
+        Block $ b 
+            { pos = animate delta b.pos 
+            , color = animate delta b.color
+            }
+    isRunning (Block b) = 
+        isRunning b.pos || isRunning b.color
 
 
 value :: Block -> Int
@@ -39,21 +48,21 @@ sameValue (Block b1) (Block b2) =
     b1.value == b2.value
 
 
-merge :: Block -> Block -> Block
-merge (Block b1) (Block b2) =
-    Block $ b1 { value = b1.value + b2.value }    
-
-
-move :: Settings -> Int -> Int -> Block -> Block
-move params col row (Block b) =
-    Block $ b { pos = moveTo params.speed toPos b.pos }
+move :: Settings -> Int -> Int -> Int -> Block -> Block
+move params col row value (Block b) =
+    Block $ b 
+        { pos = moveTo params.speed toPos b.pos 
+        , color = Color.changeColorTo (Milliseconds 300.0) (valueToColor value) b.color
+        , value = value
+        }
     where
         toPos = params.toPos col row
+
 
 draw :: forall eff . Settings -> Context2D -> Block -> Eff ( canvas :: CANVAS | eff ) Unit
 draw params ctx (Block b) = do
     void $ beginPath ctx
-    void $ setFillStyle (color b.value) ctx
+    void $ setFillStyle (Color.toCssColor $ current b.color) ctx
     void $ fillRect ctx rect
     void $ closePath ctx
 
@@ -70,16 +79,19 @@ draw params ctx (Block b) = do
     where
         (Vect x y) = current b.pos        
         rect = { x: x, y: y, w: params.blockWidth, h: params.blockHeight }
-        -- found the colors here: https://github.com/pclucas14/2048-Game/blob/master/colours.py
-        color 2    = "rgb(244,67,54)"
-        color 4    = "rgb(234,30,99)"
-        color 8    = "rgb(156,39,156)"
-        color 16   = "rgb(103,58,183)"
-        color 32   = "rgb(33,150,243)"
-        color 64   = "rgb(0,150,136)"
-        color 128  = "rgb(139,195,74)"
-        color 256  = "rgb(60,175,80)"
-        color 512  = "rgb(255,152,0)"
-        color 1024 = "rgb(255,87,34)"
-        color 2048 = "rgb(121,85,72)"
-        color _ = "black"
+
+
+-- found the colors here: https://github.com/pclucas14/2048-Game/blob/master/colours.py
+valueToColor :: Int -> Color
+valueToColor 2    = Color.create 244 67 54
+valueToColor 4    = Color.create 234 30 99
+valueToColor 8    = Color.create 156 39 156
+valueToColor 16   = Color.create 103 58 183
+valueToColor 32   = Color.create 33 150 243
+valueToColor 64   = Color.create 0 150 136
+valueToColor 128  = Color.create 139 195 74
+valueToColor 256  = Color.create 60 175 80
+valueToColor 512  = Color.create 255 152 0
+valueToColor 1024 = Color.create 255 87 34
+valueToColor 2048 = Color.create 121 85 72
+valueToColor _    = Color.create 0 0 0

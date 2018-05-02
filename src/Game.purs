@@ -12,7 +12,7 @@ module Game
 import Prelude
 
 import Anim (class Animable, animate, isRunning)
-import Block (Block)
+import Block (Block, value)
 import Block as Block
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Random (RANDOM, randomInt, randomRange)
@@ -79,7 +79,7 @@ update (Ticked delta) game
   | isRunning game.board =
     pure $ game { board = animate delta game.board }
   | game.animationRunning = do
-    board' <- insertRandom game.params (mergeBlocks game.board)
+    board' <- insertRandom game.params game.board
     case board' of
       Nothing ->
         pure $ game { animationRunning = false, gameOver = true }
@@ -181,12 +181,6 @@ insertCell inRow inCol val (Board rows) =
       | otherwise    = cell
 
 
-mergeBlocks :: Board Block -> Board Block
-mergeBlocks board@(Board rows)
-  | isRunning board = board
-  | otherwise         = Board $ map (mergeRow Block.merge) rows
-
-
 mergeScore :: Board Block -> Int
 mergeScore board@(Board rows) =
     sum $ map mergeScoreRow rows
@@ -223,10 +217,12 @@ moveBoardCells params (Board rows) =
     moveCol _ _ Empty =
       Empty
     moveCol rowNr colNr (Single block) =
-      Single (Block.move params colNr rowNr block)
+      Single (Block.move params colNr rowNr val block)
+      where val = value block
     moveCol rowNr colNr (Double block1 block2) =
-      let mov1 = Block.move params colNr rowNr block1
-          mov2 = Block.move params colNr rowNr block2
+      let val = value block1 + value block2
+          mov1 = Block.move params colNr rowNr val block1
+          mov2 = Block.move params colNr rowNr val block2
       in Double mov1 mov2
 
 

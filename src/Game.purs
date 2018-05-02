@@ -230,9 +230,9 @@ moveBoardCells params (Board rows) =
       in Double mov1 mov2
 
 
-isValidMove :: forall a . (a -> a -> Boolean) -> Direction -> Board a -> Boolean
+isValidMove :: (Block -> Block -> Boolean) -> Direction -> Board Block -> Boolean
 isValidMove eqVal dir board@(Board rows) =
-  let board'@(Board rows') = stackMove eqVal dir board
+  let board'@(Board rows') = mergeBoard $ stackMove eqVal dir board
   in not $ and $ zipWith sameRow rows rows'
   where
     sameRow (Row cells) (Row cells') = 

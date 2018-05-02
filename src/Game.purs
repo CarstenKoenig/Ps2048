@@ -79,7 +79,7 @@ update (Ticked delta) game
   | isRunning game.board =
     pure $ game { board = animate delta game.board }
   | game.animationRunning = do
-    board' <- insertRandom game.params game.board
+    board' <- insertRandom game.params (mergeBoard game.board)
     case board' of
       Nothing ->
         pure $ game { animationRunning = false, gameOver = true }
@@ -190,6 +190,10 @@ mergeScore board@(Board rows) =
       mergeScoreCell Empty = 0
       mergeScoreCell (Single _) = 0
       mergeScoreCell (Double a _) = Block.value a
+
+
+mergeBoard :: Board Block -> Board Block
+mergeBoard (Board rows) = Board $ map (mergeRow const) rows
 
 
 viewBoard :: ∀ eff a . (Context2D -> a -> Eff ( canvas :: CANVAS | eff) Unit) -> Board a -> Context2D -> Eff ( canvas :: CANVAS | eff) Unit

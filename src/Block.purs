@@ -3,9 +3,8 @@ module Block where
 import Prelude
 
 import Anim (class Animable, Anim, animate, current, isRunning)
-import AnimPos (Pos, Speed, moveTo)
+import AnimPos (Pos, moveTo)
 import Control.Monad.Eff (Eff)
-import Data.Int (toNumber)
 import DrawParams (Settings)
 import Graphics.Canvas (CANVAS, Context2D, TextAlign(..), beginPath, closePath, fillRect, fillText, measureText, setFillStyle, setFont, setTextAlign)
 import Vect (Vect(..))
@@ -22,7 +21,7 @@ create :: Settings -> Int -> Int -> Int -> Block
 create params val x y =
     Block
         { value: val
-        , pos: pure (Vect (toNumber x * params.blockWidth) (toNumber y * params.blockHeight))
+        , pos: pure (params.toPos x y)
         }
 
 
@@ -45,13 +44,11 @@ merge (Block b1) (Block b2) =
     Block $ b1 { value = b1.value + b2.value }    
 
 
-move :: Settings -> Speed -> Int -> Int -> Block -> Block
-move params speed col row (Block b) =
-    Block $ b { pos = moveTo speed toPos b.pos }
+move :: Settings -> Int -> Int -> Block -> Block
+move params col row (Block b) =
+    Block $ b { pos = moveTo params.speed toPos b.pos }
     where
-        toPos = Vect 
-            (toNumber col * params.blockWidth) 
-            (toNumber row * params.blockHeight)
+        toPos = params.toPos col row
 
 draw :: forall eff . Settings -> Context2D -> Block -> Eff ( canvas :: CANVAS | eff ) Unit
 draw params ctx (Block b) = do

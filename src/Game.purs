@@ -12,7 +12,6 @@ module Game
 import Prelude
 
 import Anim (class Animable, animate, isRunning)
-import AnimPos (Speed)
 import Block (Block)
 import Block as Block
 import Control.Monad.Eff (Eff)
@@ -64,16 +63,12 @@ init params = do
     }
 
 
-speed :: Speed
-speed = 500.0 / 1000.0
-
-
 update :: ∀ eff . Event -> Game -> Eff ( random :: RANDOM |  eff) Game
 update (Move dir) game
   | not (isRunning game.board) && isValidMove eqAnimBlock dir game.board =
     let board' =
           stackMove eqAnimBlock dir game.board
-          # moveBoardCells game.params speed
+          # moveBoardCells game.params
     in pure $ game 
       { board = board' 
       , animationRunning = true
@@ -219,19 +214,19 @@ viewBoard viewVal (Board rows) ctx =
 
 
 
-moveBoardCells :: Settings -> Speed -> Board Block -> Board Block
-moveBoardCells params sp (Board rows) =
+moveBoardCells :: Settings -> Board Block -> Board Block
+moveBoardCells params (Board rows) =
   Board $ mapWithIndex moveRow rows
   where
     moveRow i (Row cells) =
       Row $ mapWithIndex (moveCol i) cells
     moveCol _ _ Empty =
       Empty
-    moveCol rowNr colNr (Single val) =
-      Single (Block.move params sp colNr rowNr val)
-    moveCol rowNr colNr (Double val1 val2) =
-      let mov1 = Block.move params sp colNr rowNr val1
-          mov2 = Block.move params sp colNr rowNr val2
+    moveCol rowNr colNr (Single block) =
+      Single (Block.move params colNr rowNr block)
+    moveCol rowNr colNr (Double block1 block2) =
+      let mov1 = Block.move params colNr rowNr block1
+          mov2 = Block.move params colNr rowNr block2
       in Double mov1 mov2
 
 
